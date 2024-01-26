@@ -1,0 +1,145 @@
+# docker compose up -d redis mongodb mysql postgres rabbitmq elasticsearch kibana
+version: "3.9"
+services:
+   rabbitmq:
+      container_name: rabbitmq_container
+      image: rabbitmq:3.13-rc-management-alpine
+      restart: always
+      environment:
+         - RABBITMQ_DEFAULT_USER=ductan
+         - RABBITMQ_DEFAULT_PASS=ductan123
+      ports:
+         # AMQP protocol port
+         - "5672:5672"
+         # Management UI
+         - "15672:15672"
+   mysql:
+    container_name: mysql_container
+    image: mysql
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      - MYSQL_USER=ductan
+      - MYSQL_DATABASE=sw-auth
+      - MYSQL_ROOT_PASSWORD=ductan123
+      - MYSQL_PASSWORD=ductan123
+    ports:
+      - '3306:3306'
+    volumes:
+      - ./docker-volumes/mysql:/var/lib/mysql
+  
+   elasticsearch:
+      container_name: elasticsearch_container
+      image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+      restart: always
+      environment:
+         ES_JAVA_OPTS: -Xmx1g -Xms1g
+         bootstrap.memory_lock: "true"
+         discovery.type: single-node
+         network.host: 0.0.0.0
+         transport.host: 127.0.0.1
+         http.host: 0.0.0.0
+         xpack.security.enabled: "false"
+         # xpack.security.authc.api_key.enabled: "true"
+         # xpack.monitoring.collection.enabled: "true"
+         # xpack.security.enrollment.enabled: "true"
+         # xpack.security.authc.token.enabled: "true"
+         ELASTIC_PASSWORD: admin1234
+      ports:
+         - 9300:9300
+         - 9200:9200
+      volumes:
+         - ./docker-volumes/elasticsearch-data:/usr/share/elasticsearch/data
+      networks:
+         - elastic
+
+   kibana:
+      container_name: kibana_container
+      image: docker.elastic.co/kibana/kibana:8.11.0
+      restart: always
+      environment:
+         - ELASTICSEARCH_HOSTS=["http://elasticsearch_container:9200"]
+         - ELASTICSEARCH_USERNAME=kibana_system
+         - ELASTICSEARCH_PASSWORD=admin1234
+         - ELASTICSEARCH_SERVICEACCOUNT_TOKEN=AAEAAWVsYXN0aWMva2liYW5hL2pvYmJlci1raWJhbmE6S05nMU1VdnNSbldkSU5sOUhWSl9kUQ
+         - XPACK_FLEET_AGENTS_ELASTICSEARCH_HOSTS=["http://elasticsearch_container:9200"]
+      ports:
+         - 5601:5601
+      networks:
+         - elastic
+      volumes:
+         - ./kibana.yml/:/usr/share/kibana/config/kibana.yml:ro
+      depends_on:
+         - elasticsearch
+   apmServer:
+      image: docker.elastic.co/apm/apm-server:8.11.0
+      container_name: apm_server_container
+      ports:
+         - 8200:8200
+      volumes:
+         - ./apm-server.yml:/usr/share/apm-server/apm-server.yml:ro
+      networks:
+         - elastic
+      command: >
+         apm-server -e
+           -E apm-server.rum.enabled=true
+           -E setup.kibana.host=kibana_container:5601
+           -E setup.template.settings.index.number_of_replicas=0
+           -E apm-server.kibana.enabled=true
+           -E apm-server.kibana.host=kibana_container:5601
+           -E apm-server.kibana.protocol=http
+           -E strict.perms=false
+           -E apm-server.auth.anonymous.enabled=true
+
+   notifications:
+      container_name: notifications_container
+      image: ductan/notification-service:latest
+      build:
+         context: ../server/sw-notification-service # folder sw-notification-service server/sw-notification-service
+         dockerfile: DockerFile.dev
+      restart: always
+      ports:
+         - 4001:4001
+      env_file:
+         - ../server/sw-notification-service/.env
+      environment:
+         - ENABLE_APM=0
+         - NODE_ENV=development
+         - CLIENT_URL=http://localhost:3000
+         - RABBITMQ_ENDPOINT=amqp://guest:guest@localhost:5672
+         - SENDER_EMAIL=houston95@ethereal.email
+         - SENDER_EMAIL_PASSWORD=mRWjx5QJgAbDjAsCCa
+         - ELASTICSEARCH_URL=http://localhost:9200
+         - ELASTIC_APM_SERVER_URL=http://localhost:8200
+         - ELASTIC_APM_SECRET_TOKEN=
+   gateway:
+      container_name: gateway_container
+      image: ductan/gateway-service:latest
+      build:
+         context: ../server/sw-gateway-service # folder sw-gateway-service server/sw-gateway-service
+         dockerfile: DockerFile.dev
+      restart: always
+      ports:
+         - 4000:4000
+      env_file:
+         - ../server/sw-gateway-service/.env
+      environment:
+         - NODE_ENV=development
+         - GATEWAY_JWT_TOKEN=fc9ec29b698e85214d4adeea07902bac
+         - JWT_TOKEN=b618650d6d6b71a78d0133aea1533bd0
+         - SECRET_KEY_LV1=aa6b5056aabec36e3014a2bfc1aa7c14
+         - SECRET_KEY_LV2=f449ba0bd264533a3e994dc259148aef
+         - CLIENT_URL=http://localhost:3000
+         - AUTH_BASE_URL=http://localhost:4002
+         - USERS_BASE_URL=http://localhost:4003
+         - GIG_BASE_URL=http://localhost:4004
+         - MESSAGE_BASE_URL=http://localhost:4005
+         - ORDER_BASE_URL=http://localhost:4006
+         - REVIEW_BASE_URL=http://localhost:4007
+         - REDIS_URL=redis://redis_container:6379
+         - ELASTICSEARCH_URL=http://elasticsearch_container:9200
+         - ELASTIC_APM_SERVER_URL=http://localhost:8200
+         - NPM_TOKEN=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
+networks:
+   elastic:
+      name: elastic
