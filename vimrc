@@ -1,0 +1,19 @@
+nnoremap j jzz
+nnoremap k kzz
+nnoremap J 5jzz
+nnoremap K 5kzz
+nnoremap q b
+nnoremap L gt
+nnoremap H gT
+nnoremap W 2w
+nnoremap T o<Esc>k
+nnoremap <C-c> "+y
+nnoremap D ved
+nnoremap Q vbd
+inoremap jj <esc>
+inoremap <C-h> <Left>
+inoremap <C-l> <Right>
+inoremap <C-k> <Up>
+inoremap <C-j> <Down>
+inoremap <C-e> <C-Right>
+
